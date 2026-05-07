@@ -33,6 +33,9 @@ const TicketComments = ({ ticketId, ticketEstadoId }) => {
     cargarComentarios();
   }, [ticketId]);
 
+  useEffect(() => {
+    commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [comments]);
 
   const cargarComentarios = async () => {
     try {

@@ -6,7 +6,7 @@ import TicketComments from '../components/TicketComments';
 import SignatureModal from '../components/modalFirmas';
 import { ArrowLeft, UploadCloud, X, Paperclip } from 'lucide-react'
 
-// 1. FUNCIONES Y CONSTANTES ESTÁTICAS FUERA DEL COMPONENTE
+// 1. FUNCIONES Y CONSTANTES ESTÁTICAS
 const estadosTicket = [
   { id: 1, nombre: 'Abierto' },
   { id: 2, nombre: 'En proceso' },
@@ -18,24 +18,28 @@ const estadosTicket = [
 const formatDate = (dateString) => {
   if (!dateString) return 'Fecha no disponible';
   const date = new Date(dateString);
-  return date.toLocaleDateString('es-ES', {
+  // AJUSTE MANUAL MÉXICO
+  date.setHours(date.getHours() - 6);
+
+  return date.toLocaleString('es-MX', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    hour12: false
   });
 };
 
 const getPriorityColor = (prioridad) => {
   const prioridadLower = prioridad?.toLowerCase() || '';
   const colors = {
-    'crítica': 'text-red-600 bg-red-100',
     'critica': 'text-red-600 bg-red-100',
     'alta': 'text-orange-600 bg-orange-100',
     'media': 'text-yellow-600 bg-yellow-100',
     'baja': 'text-green-600 bg-green-100'
   };
+
   return colors[prioridadLower] || 'text-gray-600 bg-gray-100';
 };
 
@@ -86,11 +90,16 @@ const Inbox = () => {
   const [selectedTicketId, setSelectedTicketId] = useState(null);
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [imagenAmpliada, setImagenAmpliada] = useState(null);
-
   const detailRef = useRef(null);
-
   const isAdmin = user?.rol_id === 2 || user?.rol_id === "Administrador";
   const isAgente = user?.rol_id === 3 || user?.rol_id === "Agente";
+
+  // FILTROS
+  const [filtroEstado, setFiltroEstado] = useState('todos');
+  const [filtroFecha, setFiltroFecha] = useState('');
+  // TABS
+  const [activeTab, setActiveTab] = useState('details');
+
 
   useEffect(() => {
     cargarDatos();
@@ -152,27 +161,91 @@ const Inbox = () => {
     }
   };
 
-  const filteredTickets = useMemo(() => {
-    if (!Array.isArray(tickets)) return [];
-    if (isAdmin) return tickets;
-    if (isAgente) return tickets.filter(t => t.responsable_id === user?.id);
-    return tickets.filter(t => t.usuario_id === user?.id);
-  }, [tickets, isAdmin, isAgente, user?.id]);
+  // ===============================
+  // FILTRAR TICKETS
+  // ===============================
 
-  const selectedTicket = useMemo(() =>
-    tickets.find(t => t.id === selectedTicketId) || null,
-    [tickets, selectedTicketId]);
+  const filteredTickets = useMemo(() => {
+
+    if (!Array.isArray(tickets)) return [];
+
+    let resultado = [];
+
+    // FILTRO POR ROL
+    if (isAdmin) {
+      resultado = tickets;
+    } else if (isAgente) {
+      resultado = tickets.filter(
+        t => t.responsable_id === user?.id
+      );
+    } else {
+      resultado = tickets.filter(
+        t => t.usuario_id === user?.id
+      );
+    }
+
+    // FILTRO ESTADO
+    if (filtroEstado !== 'todos') {
+      resultado = resultado.filter(
+        t =>
+          t.estado_nombre?.toLowerCase() ===
+          filtroEstado
+      );
+    }
+
+    // FILTRO FECHA
+    if (filtroFecha) {
+      resultado = resultado.filter(t => {
+
+        const fechaTicket = new Date(
+          t.fecha_creacion
+        )
+          .toISOString()
+          .split('T')[0];
+
+        return fechaTicket === filtroFecha;
+      });
+    }
+
+    return resultado;
+
+  }, [
+    tickets,
+    isAdmin,
+    isAgente,
+    user?.id,
+    filtroEstado,
+    filtroFecha
+  ]);
+
+  // ===============================
+  // TICKET SELECCIONADO
+  // ===============================
+
+  const selectedTicket = useMemo(
+    () =>
+      tickets.find(
+        t => t.id === selectedTicketId
+      ) || null,
+    [tickets, selectedTicketId]
+  );
+
+  // ===============================
+  // SELECCIONAR TICKET
+  // ===============================
 
   const handleSelectTicket = (id) => {
     setSelectedTicketId(id);
-    if (window.innerWidth < 1024) {
-      setTimeout(() => {
-        detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 100);
-    }
+
+    setTimeout(() => {
+      detailRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start'
+      });
+    }, 100);
   };
 
-
+  // LOADING
 
   if (loading) {
     return (
@@ -182,298 +255,462 @@ const Inbox = () => {
     );
   }
 
+  // ===============================
+  // RENDER
+  // ===============================
+
   return (
-    <div className="p-4 sm:p-6">
-      <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-2">
-        {isAdmin ? '📋 Todos los Tickets' : '📥 Bandeja de entrada'}
-      </h1>
-      <p className="text-sm sm:text-base text-gray-500 mb-6">
-        {isAdmin ? 'Gestiona todos los tickets del sistema' : 'Tus tickets y solicitudes'}
-      </p>
+  <div className="p-4 sm:p-6 bg-gray-50 min-h-screen overflow-hidden">
+            {/* HEADER */}
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-2">
+              {isAdmin
+                ? ' Todos los Tickets'
+                : ' Bandeja de entrada'}
+            </h1>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Lista de tickets */}
-        <div className="lg:col-span-1 space-y-3">
-          {filteredTickets.length === 0 ? (
-            <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
-              No hay tickets
-            </div>
-          ) : (
-            filteredTickets.map((ticket) => {
-              // Calculamos el SLA en tiempo real
-              const sla = calcularEstadoSLA(ticket.sla_fecha_limite, ticket.estado_id);
+            <p className="text-sm sm:text-base text-gray-500 mb-6">
+              {isAdmin
+                ? 'Gestiona todos los tickets del sistema'
+                : 'Tus tickets y solicitudes'}
+            </p>
 
-              return (
-                <div
-                  key={ticket.id}
-                  onClick={() => handleSelectTicket(ticket.id)}
-                  // Inyectamos el color de fondo dinámico dependiendo del SLA
-                  className={`rounded-lg shadow border p-4 cursor-pointer transition-all hover:shadow-md ${sla.claseFila} ${selectedTicketId === ticket.id ? 'ring-2 ring-amber-500' : ''
+            {/* FILTROS */}
+            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-4 mb-6">
+
+              <div className="flex flex-wrap items-center gap-3">
+
+                <button
+                  onClick={() => setFiltroEstado('todos')}
+                  className={`px-5 py-2.5 rounded-full text-sm font-semibold transition-all ${filtroEstado === 'todos'
+                      ? 'bg-gray-900 text-white shadow'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                 >
-                  <div className="flex justify-between items-start gap-2 mb-2">
-                    <div className="flex flex-col">
-                      {/* Mostramos el Folio real de la base de datos */}
-                      <span className="text-xs font-mono text-gray-500 mb-1">{ticket.folio || `#${ticket.id}`}</span>
-                      <h3 className="font-semibold text-gray-800 break-words line-clamp-2">{ticket.titulo}</h3>
-                    </div>
+                  Todos
+                </button>
 
-                    <div className="flex flex-col items-end gap-1">
-                      <span className={`flex-shrink-0 text-xs px-2 py-1 rounded-full ${getPriorityColor(ticket.prioridad_nombre)}`}>
-                        {ticket.prioridad_nombre || 'Media'}
-                      </span>
-                      {/* Mostrar Badge de SLA si el ticket sigue activo */}
-                      {sla.estado !== 'inactivo' && (
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full ${sla.badge}`}>
-                          ⏳ {sla.texto}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <p className="text-sm text-gray-600 line-clamp-2">{ticket.descripcion}</p>
-                  <div className="flex flex-wrap justify-between items-center mt-3 gap-2">
-                    <span className="text-xs text-gray-400">{formatDate(ticket.fecha_creacion)}</span>
-                    <span className={`text-xs px-2 py-1 rounded-full ${getStatusColor(ticket.estado_nombre)}`}>
-                      {ticket.estado_nombre || 'Pendiente'}
-                    </span>
-                  </div>
-                  <div className="mt-2 text-xs text-gray-400 break-words">
-                    👤 {ticket.usuario_nombre || 'Usuario'}
-                    {ticket.responsable_nombre && ` | 🎧 ${ticket.responsable_nombre}`}
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
+                <button
+                  onClick={() => setFiltroEstado('abierto')}
+                  className={`px-5 py-2.5 rounded-full text-sm font-semibold transition-all ${filtroEstado === 'abierto'
+                      ? 'bg-blue-600 text-white shadow'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                >
+                  Abiertos
+                </button>
 
-        {/* Detalle del ticket */}
-        <div className="lg:col-span-2" ref={detailRef}>
-          {selectedTicket ? (
-            <div className="bg-white rounded-lg shadow">
-              <div className="p-4 sm:p-6 border-b">
-                <div className="flex flex-col md:flex-row justify-between items-start gap-4 md:gap-0 mb-4">
-                  <div className="w-full md:w-auto">
-                    <h2 className="text-lg sm:text-xl font-bold text-gray-800 break-words">{selectedTicket.titulo}</h2>
-                    <p className="text-sm font-mono text-gray-500 mt-1">
-                      {selectedTicket.folio || `#${selectedTicket.id?.toString().padStart(6, '0')}`}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2 w-full md:w-auto">
-                    <span className={`text-xs px-3 py-1 rounded-full ${getPriorityColor(selectedTicket.prioridad_nombre)}`}>
-                      {selectedTicket.prioridad_nombre || 'Media'}
-                    </span>
-                    <span className={`text-xs px-3 py-1 rounded-full ${getStatusColor(selectedTicket.estado_nombre)}`}>
-                      {selectedTicket.estado_nombre || 'Pendiente'}
-                    </span>
-                    {/* Badge de SLA en el encabezado del detalle */}
-                    {calcularEstadoSLA(selectedTicket.sla_fecha_limite, selectedTicket.estado_id).estado !== 'inactivo' && (
-                      <span className={`text-xs px-3 py-1 rounded-full ${calcularEstadoSLA(selectedTicket.sla_fecha_limite, selectedTicket.estado_id).badge}`}>
-                        SLA: {calcularEstadoSLA(selectedTicket.sla_fecha_limite, selectedTicket.estado_id).texto}
-                      </span>
-                    )}
-                  </div>
+                <button
+                  onClick={() => setFiltroEstado('cerrado')}
+                  className={`px-5 py-2.5 rounded-full text-sm font-semibold transition-all ${filtroEstado === 'cerrado'
+                      ? 'bg-gray-700 text-white shadow'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                >
+                  Cerrados
+                </button>
+
+                <div className="ml-auto">
+                  <input
+                    type="date"
+                    value={filtroFecha}
+                    onChange={(e) =>
+                      setFiltroFecha(e.target.value)
+                    }
+                    className="px-4 py-2 rounded-2xl border border-gray-200 bg-gray-50 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
                 </div>
-                <p className="text-sm text-gray-500">📅 Creado: {formatDate(selectedTicket.fecha_creacion)}</p>
-                <p className="text-sm text-gray-500 mt-1 break-words">👤 Creado por: {selectedTicket.usuario_nombre || 'N/A'}</p>
+
               </div>
 
-              <div className="p-4 sm:p-6 border-b">
-                <h3 className="font-semibold text-gray-800 mb-3">📄 Descripción</h3>
-                <p className="text-gray-600 whitespace-pre-wrap text-sm sm:text-base">{selectedTicket.descripcion}</p>
-              </div>
+            </div>
 
-              <div className="p-4 sm:p-6 border-b">
-                <h3 className="font-semibold text-gray-800 mb-3">ℹ️ Información</h3>
-                {/* 3 columnas para incluir el Vencimiento */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="bg-gray-50 rounded-lg p-3">
-                    <p className="text-xs text-gray-500">Área</p>
-                    <p className="text-sm font-medium">{selectedTicket.area_nombre || 'No asignada'}</p>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg p-3">
-                    <p className="text-xs text-gray-500">Categoría</p>
-                    <p className="text-sm font-medium">{selectedTicket.categoria_nombre || 'No asignada'}</p>
-                  </div>
-                  <div className={`rounded-lg p-3 ${calcularEstadoSLA(selectedTicket.sla_fecha_limite, selectedTicket.estado_id).claseFila || 'bg-gray-50'}`}>
-                    <p className="text-xs text-gray-500">Fecha de Vencimiento</p>
-                    <p className="text-sm font-medium">
-                      {selectedTicket.sla_fecha_limite ? formatDate(selectedTicket.sla_fecha_limite) : 'No configurado'}
-                    </p>
-                  </div>
-                </div>
-              </div>
+            {/* GRID */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-              {/* Asignar Agente */}
-              {isAdmin && (
-                <div className="p-4 sm:p-6 border-b">
-                  <h3 className="font-semibold text-gray-800 mb-3">🎧 Asignar Agente</h3>
-                  <div className="flex gap-3">
-                    <select
-                      value={selectedTicket.responsable_id || ''}
-                      onChange={(e) => asignarAgente(selectedTicket.id, e.target.value)}
-                      disabled={updating}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm sm:text-base"
+              {/* LISTA */}
+              <div className="lg:col-span-1 space-y-3 max-h-[85vh] overflow-y-auto pr-2 custom-scroll">
+
+                {filteredTickets.length === 0 ? (
+                  <div className="bg-white rounded-2xl shadow p-8 text-center text-gray-500">
+                    No hay tickets
+                  </div>
+                ) : (
+                  filteredTickets.map((ticket) => (
+
+                    <div
+                      key={ticket.id}
+                      onClick={() =>
+                        handleSelectTicket(ticket.id)
+                      }
+                      className={`bg-white rounded-2xl shadow-sm p-4 cursor-pointer transition-all duration-200 hover:shadow-lg hover:-translate-y-1 ${selectedTicketId === ticket.id
+                          ? 'ring-2 ring-amber-500'
+                          : ''
+                        }`}
                     >
-                      <option value="">Sin asignar</option>
-                      {agentes.map((agente) => (
-                        <option key={agente.id} value={agente.id}>
-                          {agente.nombre} {agente.apellido || ''} - {agente.email}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  {selectedTicket.responsable_nombre && (
-                    <p className="text-xs text-green-600 mt-2">
-                      Actualmente asignado a: {selectedTicket.responsable_nombre}
-                    </p>
-                  )}
-                </div>
-              )}
+
+                      <div className="flex justify-between items-start gap-2 mb-2">
+
+                        <h3 className="font-semibold text-gray-800 break-words line-clamp-2">
+                          {ticket.titulo}
+                        </h3>
+
+                        <span
+                          className={`flex-shrink-0 text-xs px-2 py-1 rounded-full ${getPriorityColor(
+                            ticket.prioridad_nombre
+                          )}`}
+                        >
+                          {ticket.prioridad_nombre || 'Media'}
+                        </span>
+
+                      </div>
+
+                      <p className="text-sm text-gray-600 line-clamp-2">
+                        {ticket.descripcion}
+                      </p>
+
+                      <div className="flex flex-wrap justify-between items-center mt-3 gap-2">
+
+                        <span className="text-xs text-gray-400">
+                          {formatDate(
+                            ticket.fecha_creacion
+                          )}
+                        </span>
 
 
-              {/* Actualizar Estado */}
-              {(isAdmin || isAgente) && (
-                <div className="p-4 sm:p-6 border-b">
-                  <h3 className="font-semibold text-gray-800 mb-3">🔄 Actualizar Estado</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {estadosTicket.map((estado) => (
+                      </div>
+
+                      <div className="mt-2 text-xs text-gray-400 break-words">
+
+                        {ticket.usuario_nombre || 'Usuario'}
+
+                        {ticket.responsable_nombre &&
+                          ` |  ${ticket.responsable_nombre}`}
+
+                      </div>
+
+                    </div>
+                  ))
+                )}
+
+              </div>
+
+              {/* DETALLE */}
+              <div
+                className="lg:col-span-2"
+                ref={detailRef}
+              >
+
+                {selectedTicket ? (
+
+                  <div className="bg-white rounded-3xl border border-gray-100 shadow-xl overflow-hidden">
+
+                    {/* HEADER */}
+                    <div className="p-5 sm:p-6 border-b border-gray-100 bg-gradient-to-r from-white to-gray-50">
+
+                      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-5 mb-4">
+
+                        <div className="w-full">
+
+                          <h2 className="text-2xl font-bold text-gray-900 break-words leading-tight">
+                            {selectedTicket.titulo}
+                          </h2>
+
+                          <div className="flex flex-wrap items-center gap-3 mt-3">
+
+                            <span className="text-sm text-gray-400 font-medium">
+                              #
+                              {selectedTicket.id
+                                ?.toString()
+                                .padStart(6, '0')}
+                            </span>
+
+                            <span className="text-sm text-gray-400">
+                              •
+                            </span>
+
+                            <span className="text-sm text-gray-500">
+                              {formatDate(
+                                selectedTicket.fecha_creacion
+                              )}
+                            </span>
+
+                          </div>
+
+                        </div>
+
+                      </div>
+
+                      <div className="flex items-center gap-2 text-sm text-gray-500">
+
+                        <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 font-bold">
+                          {selectedTicket.usuario_nombre
+                            ?.charAt(0)
+                            ?.toUpperCase() || 'U'}
+                        </div>
+
+                        <span>
+                          Creado por{' '}
+                          <span className="font-medium text-gray-700">
+                            {selectedTicket.usuario_nombre ||
+                              'N/A'}
+                          </span>
+                        </span>
+
+                      </div>
+
+                    </div>
+
+                    {/* TABS */}
+                    <div className="flex border-b border-gray-100 bg-white px-4 overflow-x-auto">
+
                       <button
-                        key={estado.id}
-                        onClick={() => {
-                          if (estado.id === 5) {
-                            setShowSignatureModal(true); // ¡Abrimos el modal para firmar!
-                          } else {
-                            actualizarEstado(selectedTicket.id, estado.id); // Flujo normal
-                          }
-                        }}
-                        disabled={updating}
-                        className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap ${selectedTicket.estado_id === estado.id
-                          ? 'bg-amber-500 text-white'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        onClick={() => setActiveTab('details')}
+                        className={`px-5 py-4 text-sm font-semibold border-b-2 transition-all whitespace-nowrap ${activeTab === 'details'
+                            ? 'border-amber-500 text-amber-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-700'
                           }`}
                       >
-                        {estado.nombre}
+                        Detalles
                       </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {/* ZONA DE FIRMA DE CIERRE */}
-              {selectedTicket.estado_id === 5 && selectedTicket.firma_representante && (
-                <div className="mt-8 mb-5 p-5 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50/50 flex flex-col items-center justify-center max-w-sm mx-auto">
-                  <h4 className="text-sm font-bold text-gray-800 uppercase tracking-wider mb-3">
-                    Firma de Conformidad
-                  </h4>
-                  <div className="bg-white p-2 rounded-lg shadow-sm border border-gray-100 w-full flex justify-center">
-                    <img
-                      src={selectedTicket.firma_representante}
-                      alt="Firma del Representante"
-                      className="h-28 w-auto object-contain filter contrast-125"
-                    />
-                  </div>
-                  <p className="text-xs text-gray-500 mt-3 font-medium">
-                    Ticket cerrado formalmente el {formatDate(selectedTicket.fecha_cierre)}
-                  </p>
 
-                </div>
-
-              )}
-
-              {showSignatureModal && (
-                <SignatureModal
-                  ticketId={selectedTicket.id}
-                  onClose={() => setShowSignatureModal(false)}
-                  onSuccess={() => {
-                    setShowSignatureModal(false);
-                    cargarTickets();
-                  }}
-                />
-              )}
-
-
-              {/* Sección de comentarios */}
-              <div className="border-t">
-                <TicketComments
-                  ticketId={selectedTicket.id}
-                  ticketEstadoId={selectedTicket.estado_id}
-                  ticketEstadoNombre={selectedTicket.estado_nombre}
-                />
-              </div>
-
-              {/* ZONA DE EVIDENCIAS */}
-              {selectedTicket.attachments && selectedTicket.attachments.length > 0 && (
-                <div className="mb-3 mx-5">
-                  <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                    <Paperclip className="h-4 w-4" />
-                    Evidencias Adjuntas
-                  </h4>
-                  <div className="flex flex-wrap gap-3">
-                    {selectedTicket.attachments.map((file, idx) => (
                       <button
-                        key={idx}
-                        // Al dar clic, guardamos la URL de esta foto en el estado
-                        onClick={() => setImagenAmpliada(file.ruta_archivo)}
-                        className="relative group focus:outline-none"
+                        onClick={() => setActiveTab('comments')}
+                        className={`px-5 py-4 text-sm font-semibold border-b-2 transition-all whitespace-nowrap ${activeTab === 'comments'
+                            ? 'border-amber-500 text-amber-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-700'
+                          }`}
                       >
-                        <img
-                          src={file.ruta_archivo}
-                          alt={`Evidencia ${idx + 1}`}
-                          className="h-24 w-24 object-cover rounded-lg shadow-sm border border-gray-200 transition-transform transform group-hover:scale-105 cursor-zoom-in"
-                        />
-                        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-10 transition-all rounded-lg"></div>
+                        Comentarios
                       </button>
-                    ))}
+
+                      <button
+                        onClick={() => setActiveTab('activity')}
+                        className={`px-5 py-4 text-sm font-semibold border-b-2 transition-all whitespace-nowrap ${activeTab === 'activity'
+                            ? 'border-amber-500 text-amber-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-700'
+                          }`}
+                      >
+                        Actividad
+                      </button>
+
+                    </div>
+
+                    {/* TAB DETALLES */}
+                    {activeTab === 'details' && (
+
+                      <div>
+
+                        {/* DESCRIPCIÓN */}
+                        <div className="p-5 sm:p-6 border-b border-gray-100">
+
+                          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                            Descripción
+                          </h3>
+
+                          <div className="bg-gray-50 border border-gray-100 rounded-2xl p-5">
+
+                            <p className="text-gray-700 whitespace-pre-wrap leading-relaxed text-sm sm:text-base">
+                              {selectedTicket.descripcion}
+                            </p>
+
+                          </div>
+
+                        </div>
+
+                        {/* INFORMACIÓN */}
+                        <div className="p-5 sm:p-6 border-b border-gray-100">
+
+                          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                            Información
+                          </h3>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+                            <div className="bg-gradient-to-br from-gray-50 to-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+
+                              <p className="text-xs uppercase tracking-wide text-gray-400 mb-2">
+                                Área
+                              </p>
+
+                              <p className="text-sm font-semibold text-gray-800">
+                                {selectedTicket.area_nombre ||
+                                  'No asignada'}
+                              </p>
+
+                            </div>
+
+                            <div className="bg-gradient-to-br from-gray-50 to-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+
+                              <p className="text-xs uppercase tracking-wide text-gray-400 mb-2">
+                                Categoría
+                              </p>
+
+                              <p className="text-sm font-semibold text-gray-800">
+                                {selectedTicket.categoria_nombre ||
+                                  'No asignada'}
+                              </p>
+
+                            </div>
+
+                          </div>
+
+                        </div>
+
+                        {/* ESTADOS */}
+                        {(isAdmin || isAgente) && (
+                          <div className="p-5 sm:p-6 border-b border-gray-100">
+
+                            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                              Actualizar Estado
+                            </h3>
+
+                            <div className="flex flex-wrap gap-3">
+
+                              {estadosTicket.map((estado) => (
+                                <button
+                                  key={estado.id}
+                                  onClick={() =>
+                                    actualizarEstado(
+                                      selectedTicket.id,
+                                      estado.id
+                                    )
+                                  }
+                                  disabled={updating}
+                                  className={`px-5 py-2.5 rounded-2xl text-sm font-semibold transition-all duration-200 ${selectedTicket.estado_id ===
+                                      estado.id
+                                      ? 'bg-amber-500 text-white shadow-lg scale-105'
+                                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                    }`}
+                                >
+                                  {estado.nombre}
+                                </button>
+                              ))}
+
+                            </div>
+
+                          </div>
+                        )}
+
+                      </div>
+
+                    )}
+
+                    {/* TAB COMENTARIOS */}
+                    {activeTab === 'comments' && (
+
+                      <div className="bg-gray-50/50">
+
+                        <TicketComments
+                          ticketId={selectedTicket.id}
+                          ticketEstadoId={
+                            selectedTicket.estado_id
+                          }
+                          ticketEstadoNombre={
+                            selectedTicket.estado_nombre
+                          }
+                        />
+
+                      </div>
+
+                    )}
+
+                    {/* TAB ACTIVIDAD */}
+                    {activeTab === 'activity' && (
+
+                      <div className="p-6">
+
+                        <div className="space-y-5">
+
+                          <div className="flex gap-4">
+
+                            <div className="w-3 h-3 rounded-full bg-green-500 mt-2"></div>
+
+                            <div>
+                              <p className="font-medium text-gray-800">
+                                Ticket creado
+                              </p>
+
+                              <p className="text-sm text-gray-500">
+                                {formatDate(
+                                  selectedTicket.fecha_creacion
+                                )}
+                              </p>
+                            </div>
+
+                          </div>
+
+                          <div className="flex gap-4">
+
+                            <div className="w-3 h-3 rounded-full bg-blue-500 mt-2"></div>
+
+                            <div>
+                              <p className="font-medium text-gray-800">
+                                Estado actual
+                              </p>
+
+                              <p className="text-sm text-gray-500">
+                                {selectedTicket.estado_nombre}
+                              </p>
+                            </div>
+
+                          </div>
+
+                          {selectedTicket.responsable_nombre && (
+                            <div className="flex gap-4">
+
+                              <div className="w-3 h-3 rounded-full bg-amber-500 mt-2"></div>
+
+                              <div>
+                                <p className="font-medium text-gray-800">
+                                  Asignado a
+                                </p>
+
+                                <p className="text-sm text-gray-500">
+                                  {selectedTicket.responsable_nombre}
+                                </p>
+                              </div>
+
+                            </div>
+                          )}
+
+                        </div>
+
+                      </div>
+
+                    )}
+
+                    {/* FOOTER */}
+                    <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
+
+                      <p className="text-xs text-gray-400 text-center">
+                        Sistema de Tickets • Versa Ticket
+                      </p>
+
+                    </div>
+
                   </div>
-                </div>
-              )}
-              {/*visor de imagen */}
-              {imagenAmpliada && (
-                <div
-                  className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex justify-center items-center p-4"
-                  // Si dan clic en lo negro oscuro, cerramos la imagen
-                  onClick={() => setImagenAmpliada(null)}
-                >
-                  <div className="relative max-w-5xl max-h-[90vh] w-full flex justify-center items-center">
 
-                    {/* Botón de cerrar (X) flotante */}
-                    <button
-                      onClick={() => setImagenAmpliada(null)}
-                      className="absolute -top-12 right-0 text-white/70 hover:text-white p-2 transition-colors"
-                      title="Cerrar imagen"
-                    >
-                      <X className="h-8 w-8" />
-                    </button>
+                ) : (
 
-                    {/* La imagen en tamaño gigante */}
-                    <img
-                      src={imagenAmpliada}
-                      alt="Evidencia ampliada"
-                      className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
-                      // si dan clic DENTRO de la foto, se cierre el modal
-                      onClick={(e) => e.stopPropagation()}
-                    />
+                  <div className="bg-white rounded-3xl border border-gray-100 shadow-xl p-10 text-center text-gray-500 h-full flex flex-col justify-center items-center min-h-[500px]">
+
+                    <h3 className="text-xl font-semibold text-gray-800 mb-2">
+                      Ningún ticket seleccionado
+                    </h3>
+
+                    <p className="text-gray-500 max-w-md leading-relaxed">
+                      Selecciona un ticket de la lista izquierda para ver toda la información.
+                    </p>
+
                   </div>
-                </div>
-              )}
 
+                )}
 
-              {/* Footer */}
-              <div className="p-4 bg-gray-50 rounded-b-lg border-t">
-                <p className="text-xs text-gray-400">Sistema de Tickets - Versa Ticket</p>
               </div>
-            </div>
-          ) : (
-            <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500 h-full flex flex-col justify-center items-center min-h-[300px]">
-              <div className="text-5xl sm:text-6xl mb-4">📧</div>
-              <p className="text-sm sm:text-base">Selecciona un ticket para ver los detalles</p>
-            </div>
-          )}
-        </div>
 
-      </div>
-    </div>
-  );
+            </div>
+          </div>
+          );
 };
 
-export default Inbox;
+          export default Inbox;

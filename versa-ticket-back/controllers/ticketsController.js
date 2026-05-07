@@ -2,6 +2,8 @@ const { sql, pool } = require("../config/db");
 const fs = require('fs');
 const path = require('path');
 const { cloudinary } = require("../config/cloudinary");
+const transporter = require("../config/mailer");
+const { enviarCorreoTicketCerrado } = require("../services/notificationService");
 
 // ==========================================
 // 1. OBTENER TODOS LOS TICKETS (Con filtros por rol)
@@ -33,7 +35,6 @@ exports.getTickets = async (req, res) => {
         LEFT JOIN users u ON t.usuario_id = u.id
         LEFT JOIN users r ON t.responsable_id = r.id
         LEFT JOIN attachments at ON t.id = at.ticket_id
-
         GROUP BY t.id, p.nombre, c.nombre, a.nombre, e.nombre, u.nombre, r.nombre
         ORDER BY t.id DESC
       `;
@@ -46,6 +47,7 @@ exports.getTickets = async (req, res) => {
                a.nombre as area_nombre,
                e.nombre as estado_nombre,
                u.nombre as usuario_nombre,
+               r.nombre as responsable_nombre,
                 COALESCE(
                 json_agg(at.*) FILTER (WHERE at.id IS NOT NULL), 
                 '[]'
@@ -56,6 +58,7 @@ exports.getTickets = async (req, res) => {
         LEFT JOIN areas a ON t.area_id = a.id
         LEFT JOIN ticket_estados e ON t.estado_id = e.id
         LEFT JOIN users u ON t.usuario_id = u.id
+        LEFT JOIN users r ON t.responsable_id = r.id
         LEFT JOIN attachments at ON t.id = at.ticket_id
         WHERE t.usuario_id = ${userId}
         GROUP BY t.id, p.nombre, c.nombre, a.nombre, e.nombre, u.nombre, r.nombre
@@ -79,8 +82,6 @@ exports.getAssignedTickets = async (req, res) => {
         const userRole = req.user?.rol_id;
 
         let result;
-
-        // ID 2 es el Administrador
         if (userRole === 2 || userRole === "Administrador") {
             // Admin ve todos los tickets con alguien asignado
             result = await sql`
@@ -90,6 +91,7 @@ exports.getAssignedTickets = async (req, res) => {
                a.nombre as area_nombre,
                e.nombre as estado_nombre,
                u.nombre as usuario_nombre,
+               r.nombre as responsable_nombre,
                COALESCE(
                 json_agg(at.*) FILTER (WHERE at.id IS NOT NULL), 
                 '[]'
@@ -100,6 +102,7 @@ exports.getAssignedTickets = async (req, res) => {
         LEFT JOIN areas a ON t.area_id = a.id
         LEFT JOIN ticket_estados e ON t.estado_id = e.id
         LEFT JOIN users u ON t.usuario_id = u.id
+        LEFT JOIN users r ON t.responsable_id = r.id
         LEFT JOIN attachments at ON t.id = at.ticket_id
         WHERE t.responsable_id IS NOT NULL
         GROUP BY t.id, p.nombre, c.nombre, a.nombre, e.nombre, u.nombre, r.nombre
@@ -114,6 +117,7 @@ exports.getAssignedTickets = async (req, res) => {
                a.nombre as area_nombre,
                e.nombre as estado_nombre,
                u.nombre as usuario_nombre,
+               r.nombre as responsable_nombre,
                COALESCE(
                 json_agg(at.*) FILTER (WHERE at.id IS NOT NULL), 
                 '[]'
@@ -124,9 +128,10 @@ exports.getAssignedTickets = async (req, res) => {
         LEFT JOIN areas a ON t.area_id = a.id
         LEFT JOIN ticket_estados e ON t.estado_id = e.id
         LEFT JOIN users u ON t.usuario_id = u.id
+        LEFT JOIN users r ON t.responsable_id = r.id
         LEFT JOIN attachments at ON t.id = at.ticket_id
         WHERE t.responsable_id = ${userId}
-        OGROUP BY t.id, p.nombre, c.nombre, a.nombre, e.nombre, u.nombre, r.nombre
+        GROUP BY t.id, p.nombre, c.nombre, a.nombre, e.nombre, u.nombre, r.nombre
         ORDER BY t.id DESC
       `;
         }
@@ -156,6 +161,7 @@ exports.getTicketById = async (req, res) => {
              a.nombre as area_nombre,
              e.nombre as estado_nombre,
              u.nombre as usuario_nombre,
+             r.nombre as responsable_nombre,
              COALESCE(
                 json_agg(at.*) FILTER (WHERE at.id IS NOT NULL), 
                 '[]'
@@ -166,10 +172,10 @@ exports.getTicketById = async (req, res) => {
       LEFT JOIN areas a ON t.area_id = a.id
       LEFT JOIN ticket_estados e ON t.estado_id = e.id
       LEFT JOIN users u ON t.usuario_id = u.id
+      LEFT JOIN users r ON t.responsable_id = r.id
       LEFT JOIN attachments at ON t.id = at.ticket_id
       WHERE t.id = ${id}
       GROUP BY t.id, p.nombre, c.nombre, a.nombre, e.nombre, u.nombre, r.nombre
-
     `;
 
         if (result.length === 0) {
@@ -192,17 +198,18 @@ exports.createTicket = async (req, res) => {
     const usuario_id = req.user?.id;
 
     if (!usuario_id) {
-        return res.status(401).json({ message: "No autorizado." });
+        return res.status(401).json({ message: "No autorizado. Token inválido o expirado." });
     }
 
     if (!titulo || !descripcion || !prioridad_id || !area_id) {
         return res.status(400).json({ message: "Campos obligatorios faltantes" });
     }
 
-    const cat_id = categoria_id && categoria_id !== "null" && categoria_id !== "" ? categoria_id : null;
-    const resp_id = responsable_id && responsable_id !== "null" && responsable_id !== "" ? responsable_id : null;
+    const cat_id = categoria_id && categoria_id !== "null" && categoria_id !== "undefined" && categoria_id !== "" ? categoria_id : null;
+    const resp_id = responsable_id && responsable_id !== "null" && responsable_id !== "undefined" && responsable_id !== "" ? responsable_id : null;
     const estado_id = 1;
 
+    // Solicitamos un cliente exclusivo del Pool
     const client = await pool.connect();
 
     try {
@@ -213,7 +220,7 @@ exports.createTicket = async (req, res) => {
             `SELECT tiempo_sla FROM ticket_prioridades WHERE id = $1`,
             [prioridad_id]
         );
-        const horasSLA = prioridadResult.rows[0]?.tiempo_sla || 24; // 24h por defecto por si acaso
+        const horasSLA = prioridadResult.rows[0]?.tiempo_sla || 24;
 
         // Calculamos la fecha
         const slaFechaLimite = new Date();
@@ -224,18 +231,10 @@ exports.createTicket = async (req, res) => {
             INSERT INTO tickets 
             (titulo, descripcion, estado_id, prioridad_id, categoria_id, usuario_id, responsable_id, area_id, sla_fecha_limite) 
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
-            RETURNING id, folio; -- Atrapamos lo que generó la BD
+            RETURNING id, folio;
         `;
         const ticketResult = await client.query(ticketQuery, [
-            titulo,
-            descripcion,
-            estado_id,
-            prioridad_id,
-            cat_id,
-            usuario_id,
-            resp_id,
-            area_id,
-            slaFechaLimite.toISOString()
+            titulo, descripcion, estado_id, prioridad_id, cat_id, usuario_id, resp_id, area_id, slaFechaLimite.toISOString()
         ]);
 
         const nuevoTicketId = ticketResult.rows[0].id;
@@ -243,7 +242,10 @@ exports.createTicket = async (req, res) => {
 
         // 3. Insertar Campos Dinámicos
         if (valores_dinamicos) {
-            let valoresParseados = typeof valores_dinamicos === 'string' ? JSON.parse(valores_dinamicos) : valores_dinamicos;
+            let valoresParseados = valores_dinamicos;
+            if (typeof valores_dinamicos === 'string') {
+                valoresParseados = JSON.parse(valores_dinamicos);
+            }
 
             for (const campo_id of Object.keys(valoresParseados)) {
                 const valor = valoresParseados[campo_id];
@@ -256,13 +258,12 @@ exports.createTicket = async (req, res) => {
             }
         }
 
-        // 4. Insertar Evidencias
+        // 4. Insertar Evidencias (Lógica de Cloudinary)
         if (archivos && archivos.length > 0) {
             for (const file of archivos) {
                 const rutaWeb = file.path;
                 if (!rutaWeb) {
                     console.log("¡Cloudinary no devolvió la ruta para el archivo:", file.originalname);
-                    console.log("Objeto file completo:", file);
                 }
                 await client.query(
                     `INSERT INTO attachments (ticket_id, nombre_archivo, ruta_archivo, tipo_archivo, tamaño, subido_por) VALUES ($1, $2, $3, $4, $5, $6)`,
@@ -276,7 +277,7 @@ exports.createTicket = async (req, res) => {
         res.status(201).json({
             message: "Ticket creado exitosamente",
             ticketId: nuevoTicketId,
-            folio: folioGenerado // Se lo mandamos al Frontend
+            folio: folioGenerado
         });
 
     } catch (error) {
@@ -289,33 +290,67 @@ exports.createTicket = async (req, res) => {
 };
 
 // ==========================================
-// 5. ACTUALIZAR TICKET
+// 5. ACTUALIZAR TICKET (Con notificaciones)
 // ==========================================
 exports.updateTicket = async (req, res) => {
     try {
         const { id } = req.params;
-        const { titulo, descripcion, prioridad_id, categoria_id, area_id, responsable_id, estado_id } = req.body;
+        const {
+            titulo, descripcion, prioridad_id, categoria_id, area_id, responsable_id, estado_id
+        } = req.body;
 
-        const result = await sql`
-       UPDATE tickets 
-       SET titulo = COALESCE(${titulo || null}, titulo),
-           descripcion = COALESCE(${descripcion || null}, descripcion),
-           prioridad_id = COALESCE(${prioridad_id || null}, prioridad_id),
-           categoria_id = COALESCE(${categoria_id || null}, categoria_id),
-           area_id = COALESCE(${area_id || null}, area_id),
-           responsable_id = COALESCE(${responsable_id || null}, responsable_id),
-           estado_id = COALESCE(${estado_id || null}, estado_id)
-       WHERE id = ${id}
-       RETURNING *
-    `;
+        const ESTADO_CERRADO_ID = 5;
 
-        if (result.length === 0) {
+        // 1. Obtener estado actual antes de actualizar
+        const ticketAntes = await sql`
+            SELECT estado_id, usuario_id
+            FROM tickets
+            WHERE id = ${id}
+        `;
+
+        if (ticketAntes.length === 0) {
             return res.status(404).json({ message: "Ticket no encontrado" });
         }
 
-        res.json(result[0]);
+        const estadoAnterior = ticketAntes[0].estado_id;
+
+        // 2. Actualizar ticket
+        const result = await sql`
+            UPDATE tickets 
+            SET titulo = COALESCE(${titulo || null}, titulo),
+                descripcion = COALESCE(${descripcion || null}, descripcion),
+                prioridad_id = COALESCE(${prioridad_id || null}, prioridad_id),
+                categoria_id = COALESCE(${categoria_id || null}, categoria_id),
+                area_id = COALESCE(${area_id || null}, area_id),
+                responsable_id = COALESCE(${responsable_id || null}, responsable_id),
+                estado_id = COALESCE(${estado_id || null}, estado_id)
+            WHERE id = ${id}
+            RETURNING *
+        `;
+
+        const ticketActualizado = result[0];
+
+        // 3. Validar cambio REAL a cerrado para notificar
+        const cambioACerrado =
+            Number(estadoAnterior) !== ESTADO_CERRADO_ID &&
+            Number(ticketActualizado.estado_id) === ESTADO_CERRADO_ID;
+
+        if (cambioACerrado) {
+            try {
+                const userResult = await sql`SELECT nombre, email FROM users WHERE id = ${ticketActualizado.usuario_id}`;
+                if (userResult.length > 0) {
+                    const usuario = userResult[0];
+                    await enviarCorreoTicketCerrado(usuario, ticketActualizado, transporter);
+                }
+            } catch (error) {
+                console.error("❌ Error enviando email de cierre:", error);
+            }
+        }
+
+        res.json(ticketActualizado);
+
     } catch (error) {
-        console.error(error);
+        console.error("❌ Error actualizando ticket:", error);
         res.status(500).json({ message: "Error actualizando ticket" });
     }
 };
@@ -326,7 +361,6 @@ exports.updateTicket = async (req, res) => {
 exports.deleteTicket = async (req, res) => {
     try {
         const { id } = req.params;
-
         const result = await sql`DELETE FROM tickets WHERE id = ${id} RETURNING id`;
 
         if (result.length === 0) {
@@ -341,25 +375,24 @@ exports.deleteTicket = async (req, res) => {
 };
 
 // ==========================================
-// 7. Firmar ticket (agentes y admin pueden hacerlo)
+// 7. Firmar ticket (Evidencias y Firmas)
 // ==========================================
 exports.closeTicketSign = async (req, res) => {
     try {
         const { id } = req.params;
         const { firma_base64 } = req.body;
 
-        // Validamos que el ticket exista
         if (!firma_base64) {
             return res.status(400).json({ message: "La firma es obligatoria para cerrar el ticket." });
         }
-        //subir base64 a cloudinary
+        
+        // Subir base64 a Cloudinary
         const uploadResponse = await cloudinary.uploader.upload(firma_base64, {
-            folder: "ticket_firmas_firmas",
+            folder: "ticket_firmas",
             public_id: `firma_tkt_${id}_${Date.now()}`
         });
-        //url de la imagen subida
+        
         const rutaWeb = uploadResponse.secure_url;
-
 
         // Actualizamos el estado y guardamos la ruta
         const result = await sql`

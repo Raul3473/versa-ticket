@@ -65,7 +65,6 @@ export function CreateTicketForm() {
                 ])
 
                 setCategorias(resCat.data)
-
                 // 🛡️ EL BLINDAJE: Nos aseguramos de que sea un arreglo
                 const camposArray = Array.isArray(resCampos.data) ? resCampos.data : [];
                 setCamposDinamicos(camposArray)
@@ -198,12 +197,21 @@ export function CreateTicketForm() {
                                     className="w-full rounded-lg border border-input bg-white px-4 py-2.5 text-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
                                 />
                             </div>
+
                             <div className="space-y-2">
-                                <label htmlFor="area_id" className="block text-sm font-medium text-foreground">Área <span className="text-destructive">*</span></label>
-                                <select id="area_id" name="area_id" value={formData.area_id} onChange={handleChange} required className="w-full rounded-lg border border-input bg-white px-4 py-2.5 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20">
-                                    <option value="">Selecciona el área</option>
-                                    {areas.map((a) => (<option key={a.id} value={a.id}>{a.nombre}</option>))}
-                                </select>
+                                <label htmlFor="descripcion" className="block text-sm font-medium text-foreground">
+                                    Descripción <span className="text-destructive">*</span>
+                                </label>
+                                <textarea
+                                    id="descripcion"
+                                    name="descripcion"
+                                    placeholder="Describe el problema con el mayor detalle posible..."
+                                    rows={4}
+                                    value={formData.descripcion}
+                                    onChange={handleChange}
+                                    required
+                                    className="w-full rounded-lg border border-input bg-white px-4 py-2.5 text-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20 resize-none"
+                                />
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
@@ -222,6 +230,13 @@ export function CreateTicketForm() {
                                 </div>
                             </div>
 
+                            <div className="space-y-2">
+                                <label htmlFor="area_id" className="block text-sm font-medium text-foreground">Área <span className="text-destructive">*</span></label>
+                                <select id="area_id" name="area_id" value={formData.area_id} onChange={handleChange} required className="w-full rounded-lg border border-input bg-white px-4 py-2.5 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20">
+                                    <option value="">Selecciona el área</option>
+                                    {areas.map((a) => (<option key={a.id} value={a.id}>{a.nombre}</option>))}
+                                </select>
+                            </div>
 
                             {camposDinamicos.length > 0 && (
                                 <div className="space-y-4 border-t pt-4 mt-4">
@@ -270,21 +285,6 @@ export function CreateTicketForm() {
                                     </div>
                                 </div>
                             )}
-                            <div className="space-y-2">
-                                <label htmlFor="descripcion" className="block text-sm font-medium text-foreground">
-                                    Descripción <span className="text-destructive">*</span>
-                                </label>
-                                <textarea
-                                    id="descripcion"
-                                    name="descripcion"
-                                    placeholder="Describe el problema con el mayor detalle posible..."
-                                    rows={4}
-                                    value={formData.descripcion}
-                                    onChange={handleChange}
-                                    required
-                                    className="w-full rounded-lg border border-input bg-white px-4 py-2.5 text-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20 resize-none"
-                                />
-                            </div>
 
                             <div className="space-y-2">
                                 <label className="block text-sm font-medium text-foreground">

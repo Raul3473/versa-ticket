@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+
 const path = require("path");
 
 //para cloudinary
@@ -20,6 +21,7 @@ const { checkTicketNotClosed, checkTicketIsClosed } = require("../middlewares/ti
 router.post('/', verifyToken, upload.array('archivos', 5), ticketsController.createTicket);
 // ruta para cerrar con firma y subir a cloudinary
 router.put('/:id/firmar', verifyToken, ticketsController.closeTicketSign);
+
 // 2. EL CANDADO PRINCIPAL
 // Exige que el usuario tenga un token válido para acceder a cualquier ruta
 router.use(verifyToken);
@@ -29,6 +31,9 @@ router.get("/assigned", ticketsController.getAssignedTickets);
 router.get("/", ticketsController.getTickets);
 router.get("/:id", ticketsController.getTicketById);
 
+
+// 4. CREACIÓN DE TICKETS (Con soporte para archivos)
+router.post("/", upload.array("archivos", 5), ticketsController.createTicket); 
 
 // 5. ACTUALIZACIÓN DE TICKETS
 // Cadena de seguridad: Token Válido -> ¿Tiene Permiso de Update? -> ¿El ticket NO está cerrado? -> Controlador

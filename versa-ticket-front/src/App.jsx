@@ -13,7 +13,6 @@ import { TicketSidebar } from './components/sideBar';
 import { CreateTicketForm } from './pages/createTicket';
 import AdminPanel from './pages/panelAdmin';
 
-
 // 1. LAYOUT PRINCIPAL
 // ----------------------------------------------------------------------
 const MainLayout = () => {
