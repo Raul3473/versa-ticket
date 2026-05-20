@@ -7,11 +7,10 @@ const { verifyToken, hasPermission } = require("../middlewares/authMiddleware");
 router.use(verifyToken);
 
 // ======================================================================
-// RUTAS ABIERTAS (Solo requieren estar logueado, sin permisos especiales)
+// RUTAS ABIERTAS
 // ======================================================================
 
-// 🚀 IMPORTANTE: Dile a tu compa que use el endpoint "/api/categorias/activas" 
-// en su app de Android/iOS para llenar los selectores al crear un ticket.
+
 router.get("/activas", categoriasController.getCategorias);
 
 // ======================================================================
@@ -28,7 +27,6 @@ router.post("/", hasPermission("categorias", "create"), categoriasController.cre
 // RUTAS CON PARÁMETROS DINÁMICOS (Siempre van al final para evitar choques)
 // ======================================================================
 
-// La ruta de tu compa para buscar una sola categoría
 router.get("/:id", categoriasController.getCategoriaById);
 
 router.put("/:id", hasPermission("categorias", "update"), categoriasController.updateCategoria);

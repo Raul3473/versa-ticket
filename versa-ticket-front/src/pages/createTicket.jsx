@@ -1,3 +1,4 @@
+// src/pages/createTicket.jsx
 import { useState, useEffect } from 'react'
 import { ArrowLeft, UploadCloud, X, Paperclip } from 'lucide-react'
 import mascot from '../assets/mascota.png'
@@ -12,6 +13,7 @@ export function CreateTicketForm() {
     const [areas, setAreas] = useState([])
     const [prioridades, setPrioridades] = useState([])
     const [categorias, setCategorias] = useState([])
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
 
     const [formData, setFormData] = useState({
         titulo: '',
@@ -30,22 +32,28 @@ export function CreateTicketForm() {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                // Hacemos todas las peticiones en paralelo para que sea súper rápido
-                const [resAreas, resPrioridades, resUsuarios] = await Promise.all([
+                const [resAreas, resPrioridades] = await Promise.all([
                     api.get("/catalogos/areas"),
-                    api.get("/catalogos/prioridades"),
-                    api.get("/users") // Si esta falla por permisos, asegúrate de manejarlo en el back
-                ])
+                    api.get("/catalogos/prioridades")
+                ]);
 
-                setAreas(resAreas.data)
-                setPrioridades(resPrioridades.data)
-                setResponsables(resUsuarios.data)
+                setAreas(resAreas.data);
+                setPrioridades(resPrioridades.data);
+
+                if (user?.rol_id === 2 || user?.rol_id === 3) {
+                    try {
+                        const resUsuarios = await api.get("/users");
+                        setResponsables(resUsuarios.data);
+                    } catch (errorUsers) {
+                        console.error("Error cargando usuarios:", errorUsers);
+                    }
+                }
             } catch (error) {
-                console.error("Error cargando catálogos iniciales:", error)
+                console.error("Error cargando catálogos iniciales:", error);
             }
-        }
-        fetchData()
-    }, [])
+        };
+        fetchData();
+    }, [user]); 
 
     // 2. CARGA DINÁMICA DE CATEGORÍAS Y CAMPOS POR ÁREA
     useEffect(() => {
@@ -58,18 +66,15 @@ export function CreateTicketForm() {
 
         const fetchDatosPorArea = async () => {
             try {
-                // Peticiones simultáneas con Axios
                 const [resCat, resCampos] = await Promise.all([
                     api.get(`/catalogos/categorias/${formData.area_id}`),
                     api.get(`/campos/area/${formData.area_id}`)
                 ])
 
                 setCategorias(resCat.data)
-                // 🛡️ EL BLINDAJE: Nos aseguramos de que sea un arreglo
                 const camposArray = Array.isArray(resCampos.data) ? resCampos.data : [];
                 setCamposDinamicos(camposArray)
 
-                // Inicializamos los valores de los campos dinámicos de forma segura
                 const valoresIniciales = {}
                 camposArray.forEach(campo => {
                     valoresIniciales[campo.id] = campo.tipo_dato === 'checkbox' ? false : ''
@@ -78,7 +83,6 @@ export function CreateTicketForm() {
 
             } catch (error) {
                 console.error("Error cargando datos del área:", error)
-                // Si falla, reseteamos a arreglos vacíos para que no explote
                 setCategorias([])
                 setCamposDinamicos([])
             }
@@ -109,33 +113,62 @@ export function CreateTicketForm() {
         setArchivos(prev => prev.filter((_, index) => index !== indexToRemove))
     }
 
+    // 🔥 NUEVA FUNCIÓN DE INTELIGENCIA ARTIFICIAL
+    const handleAutoClassify = async () => {
+        if (!formData.titulo || formData.descripcion.length < 10) {
+            alert("Escribe un título y una descripción detallada primero para que la IA pueda ayudarte.");
+            return;
+        }
+
+        setIsAnalyzing(true);
+
+        try {
+            const response = await api.post('/tickets/analyze', {
+                titulo: formData.titulo,
+                descripcion: formData.descripcion
+            });
+
+            const data = response.data.clasificacion;
+
+            // Actualizamos el formData con las deducciones de la IA
+            setFormData(prev => ({
+                ...prev,
+                area_id: data.area_id ? String(data.area_id) : prev.area_id,
+                categoria_id: data.categoria_id ? String(data.categoria_id) : prev.categoria_id,
+                prioridad_id: data.prioridad_id ? String(data.prioridad_id) : prev.prioridad_id
+            }));
+
+            alert(`✨ Análisis completado.\nSentimiento detectado: ${data.sentimiento}`);
+
+        } catch (error) {
+            console.error("Error en IA:", error);
+            alert("La IA está descansando ahorita, por favor clasifica tu ticket manualmente.");
+        } finally {
+            setIsAnalyzing(false);
+        }
+    };
+
     // 3. ENVÍO DE FORMULARIO CON AXIOS
     const handleSubmit = async (e) => {
         e.preventDefault()
 
         try {
-            //1. crear contenedor de formulario
             const formDataPayload = new FormData();
-            //2. agregar campos al contenedor
             formDataPayload.append('titulo', formData.titulo);
             formDataPayload.append('descripcion', formData.descripcion);
             formDataPayload.append('prioridad_id', Number(formData.prioridad_id));
             formDataPayload.append('categoria_id', Number(formData.categoria_id));
             formDataPayload.append('area_id', Number(formData.area_id));
             formDataPayload.append('estado_id', 1);
-            formDataPayload.append('usuario_id', user?.id); // Asignamos el ticket al usuario que lo crea
+            formDataPayload.append('usuario_id', user?.id);
 
-
-            //convertir a string para procesar los datos
             if(valoresDinamicos){
                 formDataPayload.append('campos_dinamicos', JSON.stringify(valoresDinamicos));
             }
-            // agregar archivos al contenedor
             archivos.forEach((file) => {
                 formDataPayload.append('archivos', file);
             });
 
-            //4. enviar formulario con axios
             const response = await api.post('/tickets', formDataPayload, {
                 headers: {
                     'Content-Type': 'multipart/form-data'
@@ -145,12 +178,10 @@ export function CreateTicketForm() {
             console.log("Ticket creado en Cloudinary:", response.data);
             alert("Ticket con evidencias creados exitosamente!");
 
-            // Limpieza del formulario
             setFormData({ titulo: '', descripcion: '', prioridad_id: '2', categoria_id: '', area_id: '' });
             setArchivos([]);
             setValoresDinamicos({});
 
-            // lo mandamos a la bandeja
             navigate('/inbox');
 
         } catch (error) {
@@ -162,7 +193,10 @@ export function CreateTicketForm() {
     return (
         <div className="flex-1 overflow-auto">
             <div className="min-h-full bg-background p-6">
-                <button className="mb-6 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+                <button 
+                    onClick={() => navigate('/inbox')}
+                    className="mb-6 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                >
                     <ArrowLeft className="h-4 w-4" />
                     Regresar a tickets
                 </button>
@@ -214,6 +248,39 @@ export function CreateTicketForm() {
                                 />
                             </div>
 
+                            {/* BOTÓN DE INTELIGENCIA ARTIFICIAL */}
+                            <div className="flex justify-end">
+                                <button
+                                    type="button"
+                                    onClick={handleAutoClassify}
+                                    disabled={isAnalyzing || !formData.titulo || !formData.descripcion}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all shadow-md
+                                        ${isAnalyzing 
+                                            ? 'bg-purple-300 cursor-not-allowed animate-pulse' 
+                                            : 'bg-gradient-to-r from-purple-500 to-indigo-600 hover:scale-105 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed'
+                                        }`}
+                                >
+                                    {isAnalyzing ? (
+                                        <>
+                                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                            Analizando con IA...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span>✨</span> Autoclasificar con Inteligencia Artificial
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label htmlFor="area_id" className="block text-sm font-medium text-foreground">Área <span className="text-destructive">*</span></label>
+                                <select id="area_id" name="area_id" value={formData.area_id} onChange={handleChange} required className="w-full rounded-lg border border-input bg-white px-4 py-2.5 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20">
+                                    <option value="">Selecciona el área</option>
+                                    {areas.map((a) => (<option key={a.id} value={a.id}>{a.nombre}</option>))}
+                                </select>
+                            </div>
+
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <label htmlFor="prioridad_id" className="block text-sm font-medium text-foreground">Prioridad <span className="text-destructive">*</span></label>
@@ -230,18 +297,12 @@ export function CreateTicketForm() {
                                 </div>
                             </div>
 
-                            <div className="space-y-2">
-                                <label htmlFor="area_id" className="block text-sm font-medium text-foreground">Área <span className="text-destructive">*</span></label>
-                                <select id="area_id" name="area_id" value={formData.area_id} onChange={handleChange} required className="w-full rounded-lg border border-input bg-white px-4 py-2.5 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20">
-                                    <option value="">Selecciona el área</option>
-                                    {areas.map((a) => (<option key={a.id} value={a.id}>{a.nombre}</option>))}
-                                </select>
-                            </div>
+                            
 
                             {camposDinamicos.length > 0 && (
                                 <div className="space-y-4 border-t pt-4 mt-4">
                                     <h3 className="font-semibold text-primary flex items-center gap-2">
-                                        <span>✨</span> Información específica del Área
+                                        <span>📋</span> Información específica del Área
                                     </h3>
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -295,7 +356,7 @@ export function CreateTicketForm() {
                                         <div className="flex flex-col items-center justify-center pt-5 pb-6">
                                             <UploadCloud className="w-8 h-8 mb-2 text-muted-foreground" />
                                             <p className="mb-2 text-sm text-muted-foreground"><span className="font-semibold text-primary">Haz clic para subir</span> o arrastra tus archivos</p>
-                                            <p className="text-xs text-muted-foreground">PNG, JPG, PDF (Max. 5MB)</p>
+                                            <p className="text-xs text-muted-foreground">PNG, JPG, PDF (Max. 10MB)</p>
                                         </div>
                                         <input id="dropzone-file" type="file" className="hidden" multiple onChange={handleFileChange} />
                                     </label>
@@ -322,7 +383,7 @@ export function CreateTicketForm() {
                             </div>
 
                             <div className="flex gap-4 pt-4 border-t border-border">
-                                <button type="button" className="flex-1 rounded-lg bg-muted px-4 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted/80 transition-colors">
+                                <button type="button" onClick={() => navigate('/inbox')} className="flex-1 rounded-lg bg-muted px-4 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted/80 transition-colors">
                                     Cancelar
                                 </button>
                                 <button type="submit" className="flex-1 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground hover:bg-accent/90 transition-colors">

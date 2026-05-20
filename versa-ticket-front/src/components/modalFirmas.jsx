@@ -1,3 +1,4 @@
+// components/modalFirmas.jsx
 import React, { useRef, useState } from 'react';
 import SignatureCanvas from 'react-signature-canvas';
 import api from '../api/axios';

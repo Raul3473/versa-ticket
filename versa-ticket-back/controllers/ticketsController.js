@@ -4,6 +4,7 @@ const path = require('path');
 const { cloudinary } = require("../config/cloudinary");
 const transporter = require("../config/mailer");
 const { enviarCorreoTicketCerrado } = require("../services/notificationService");
+const { analizarTicket } = require('../services/iaServices');
 
 // ==========================================
 // 1. OBTENER TODOS LOS TICKETS (Con filtros por rol)
@@ -196,6 +197,8 @@ exports.createTicket = async (req, res) => {
     let { titulo, descripcion, prioridad_id, categoria_id, area_id, responsable_id, valores_dinamicos } = req.body;
     const archivos = req.files;
     const usuario_id = req.user?.id;
+    console.log("1. Textos recibidos (req.body):", req.body);
+    console.log("2. Archivos recibidos (req.files):", req.files);
 
     if (!usuario_id) {
         return res.status(401).json({ message: "No autorizado. Token inválido o expirado." });
@@ -412,5 +415,29 @@ exports.closeTicketSign = async (req, res) => {
     } catch (error) {
         console.error("Error CRÍTICO al guardar la firma:", error);
         res.status(500).json({ message: "Error interno al procesar la firma" });
+    }
+};
+// ==========================================
+// 8. AUTO-CLASIFICAR TICKET CON IA
+// ==========================================
+exports.autoClassify = async (req, res) => {
+    try {
+        const { titulo, descripcion } = req.body;
+
+        if (!titulo || !descripcion) {
+            return res.status(400).json({ message: "Se requiere título y descripción para analizar" });
+        }
+
+        // Llamamos a nuestro nuevo servicio de IA
+        const clasificacion = await analizarTicket(titulo, descripcion);
+
+        res.json({
+            message: "Análisis completado",
+            clasificacion: clasificacion
+        });
+
+    } catch (error) {
+        console.error("Error en autoClassify:", error);
+        res.status(500).json({ message: "Error interno procesando la Inteligencia Artificial" });
     }
 };

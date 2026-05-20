@@ -1,3 +1,4 @@
+// controllers/catalogosController.js
 const { sql } = require("../config/db");
 
 // =========================

@@ -1,92 +1,31 @@
 const { sql } = require("../config/db");
 
+// ==========================================
+// 1. STATS GLOBALES
+// ==========================================
 exports.getGeneralStats = async (req, res) => {
     try {
-        const userId = req.user.id;
-        const userRole = req.user.rol_id;
+        const stats = await sql`
+            SELECT 
+                COUNT(*)::int as total,
+                COUNT(CASE WHEN estado_id = 1 THEN 1 END)::int as pendientes,
+                COUNT(CASE WHEN estado_id = 2 THEN 1 END)::int as en_progreso,
+                COUNT(CASE WHEN estado_id IN (4, 5) THEN 1 END)::int as completados
+            FROM tickets
+        `;
         
-        let stats;
-        let commentsStats;
-        let totalUsers = 0;
-        let mttr = 0; // Mean Time To Resolution (Tiempo Promedio de Resolución)
+        const usersCount = await sql`SELECT COUNT(*)::int as total FROM users`;
+        const commentsStats = await sql`SELECT COUNT(*)::int as total_comentarios FROM comments`;
         
-        if (userRole === 2 || userRole === "Administrador") {
-            // ADMIN
-            stats = await sql`
-                SELECT 
-                    COUNT(*)::int as total,
-                    COUNT(CASE WHEN estado_id = 1 THEN 1 END)::int as pendientes,
-                    COUNT(CASE WHEN estado_id = 2 THEN 1 END)::int as en_progreso,
-                    COUNT(CASE WHEN estado_id IN (4, 5) THEN 1 END)::int as completados
-                FROM tickets
-            `;
-            
-            const usersCount = await sql`SELECT COUNT(*)::int as total FROM users`;
-            totalUsers = usersCount[0]?.total || 0;
-            
-            commentsStats = await sql`
-                SELECT COUNT(*)::int as total_comentarios
-                FROM comments
-            `;
-            mttrStats = await sql`
-                SELECT COALESCE(ROUND(AVG(EXTRACT(EPOCH FROM (fecha_cierre - fecha_creacion)) / 3600)::numeric, 2), 0) AS mttr
-                FROM tickets
-                WHERE estado_id = 5 AND fecha_cierre IS NOT NULL
-            `;
-            
-        } else if (userRole === 3 || userRole === "Agente") {
-            // AGENTE
-            stats = await sql`
-                SELECT 
-                    COUNT(*)::int as total,
-                    COUNT(CASE WHEN estado_id = 1 THEN 1 END)::int as pendientes,
-                    COUNT(CASE WHEN estado_id = 2 THEN 1 END)::int as en_progreso,
-                    COUNT(CASE WHEN estado_id IN (4, 5) THEN 1 END)::int as completados
-                FROM tickets
-                WHERE responsable_id = ${userId}
-            `;
-            
-            commentsStats = await sql`
-                SELECT COUNT(c.id)::int as total_comentarios
-                FROM comments c
-                JOIN tickets t ON c.ticket_id = t.id
-                WHERE t.responsable_id = ${userId}
-            `;
-            mttrStats = await sql`
-                SELECT COALESCE(ROUND(AVG(EXTRACT(EPOCH FROM (fecha_cierre - fecha_creacion)) / 3600)::numeric, 2), 0) AS mttr
-                FROM tickets
-                WHERE estado_id = 5 AND fecha_cierre IS NOT NULL AND responsable_id = ${userId}
-            `;
-            
-        } else {
-            // USUARIO NORMAL
-            stats = await sql`
-                SELECT 
-                    COUNT(*)::int as total,
-                    COUNT(CASE WHEN estado_id = 1 THEN 1 END)::int as pendientes,
-                    COUNT(CASE WHEN estado_id = 2 THEN 1 END)::int as en_progreso,
-                    COUNT(CASE WHEN estado_id IN (4, 5) THEN 1 END)::int as completados
-                FROM tickets
-                WHERE usuario_id = ${userId}
-            `;
-            
-            commentsStats = await sql`
-                SELECT COUNT(c.id)::int as total_comentarios
-                FROM comments c
-                JOIN tickets t ON c.ticket_id = t.id
-                WHERE t.usuario_id = ${userId}
-            `;
-            mttrStats = await sql`
-                SELECT COALESCE(ROUND(AVG(EXTRACT(EPOCH FROM (fecha_cierre - fecha_creacion)) / 3600)::numeric, 2), 0) AS mttr
-                FROM tickets
-                WHERE estado_id = 5 AND fecha_cierre IS NOT NULL AND usuario_id = ${userId}
-            `;
-        }
+        const mttrStats = await sql`
+            SELECT COALESCE(ROUND(AVG(EXTRACT(EPOCH FROM (fecha_cierre - fecha_creacion)) / 3600)::numeric, 2), 0) AS mttr
+            FROM tickets
+            WHERE estado_id = 5 AND fecha_cierre IS NOT NULL
+        `;
 
         const totalTickets = stats[0]?.total || 0;
         const totalComments = commentsStats[0]?.total_comentarios || 0;
         const avgCommentsPerTicket = totalTickets > 0 ? (totalComments / totalTickets).toFixed(2) : 0;
-        const tiempoMedio = mttrStats[0]?.mttr || 0;
         
         res.json({
             success: true,
@@ -95,10 +34,10 @@ exports.getGeneralStats = async (req, res) => {
                 pendingTickets: stats[0]?.pendientes || 0,
                 inProgressTickets: stats[0]?.en_progreso || 0,
                 completedTickets: stats[0]?.completados || 0,
-                totalUsers: userRole === 2 || userRole === "Administrador" ? totalUsers : null,
+                totalUsers: usersCount[0]?.total || 0,
                 totalComments,
                 avgCommentsPerTicket: parseFloat(avgCommentsPerTicket),
-                mttr: parseFloat(tiempoMedio) // Tiempo Promedio de Resolución en horas
+                mttr: parseFloat(mttrStats[0]?.mttr || 0) // Tiempo Promedio en horas
             }
         });
         
@@ -108,70 +47,28 @@ exports.getGeneralStats = async (req, res) => {
     }
 };
 
+// ==========================================
+// 2. GRÁFICAS DEL DASHBOARD
+// ==========================================
 exports.getDashboardStats = async (req, res) => {
     try {
-        const userId = req.user.id;
-        const userRole = req.user.rol_id;
+        // Todos ven el ritmo de la empresa en los últimos 7 días
+        const diaQuery = await sql`
+            SELECT DATE(fecha_creacion) as fecha, COUNT(*)::int as total
+            FROM tickets
+            WHERE fecha_creacion >= NOW() - INTERVAL '7 days'
+            GROUP BY DATE(fecha_creacion)
+            ORDER BY fecha DESC
+        `;
         
-        let diaQuery;
-        let prioridadQuery;
+        const prioridadQuery = await sql`
+            SELECT p.nombre, COUNT(t.id)::int as total
+            FROM ticket_prioridades p
+            LEFT JOIN tickets t ON t.prioridad_id = p.id
+            GROUP BY p.id, p.nombre
+            ORDER BY p.id
+        `;
         
-        // CUIDADO: La sintaxis de fecha (INTERVAL) varía un poco en Postgres si la metes directo
-        // Lo mejor es dejar que la base de datos maneje el NOW() - INTERVAL '7 days'
-        
-        if (userRole === 2 || userRole === "Administrador") {
-            diaQuery = await sql`
-                SELECT DATE(fecha_creacion) as fecha, COUNT(*)::int as total
-                FROM tickets
-                WHERE fecha_creacion >= NOW() - INTERVAL '7 days'
-                GROUP BY DATE(fecha_creacion)
-                ORDER BY fecha DESC
-            `;
-            
-            prioridadQuery = await sql`
-                SELECT p.nombre, COUNT(t.id)::int as total
-                FROM ticket_prioridades p
-                LEFT JOIN tickets t ON t.prioridad_id = p.id
-                GROUP BY p.id, p.nombre
-                ORDER BY p.id
-            `;
-            
-        } else if (userRole === 3 || userRole === "Agente") {
-            diaQuery = await sql`
-                SELECT DATE(fecha_creacion) as fecha, COUNT(*)::int as total
-                FROM tickets
-                WHERE responsable_id = ${userId} AND fecha_creacion >= NOW() - INTERVAL '7 days'
-                GROUP BY DATE(fecha_creacion)
-                ORDER BY fecha DESC
-            `;
-            
-            prioridadQuery = await sql`
-                SELECT p.nombre, COUNT(t.id)::int as total
-                FROM ticket_prioridades p
-                LEFT JOIN tickets t ON t.prioridad_id = p.id AND t.responsable_id = ${userId}
-                GROUP BY p.id, p.nombre
-                ORDER BY p.id
-            `;
-            
-        } else {
-            diaQuery = await sql`
-                SELECT DATE(fecha_creacion) as fecha, COUNT(*)::int as total
-                FROM tickets
-                WHERE usuario_id = ${userId} AND fecha_creacion >= NOW() - INTERVAL '7 days'
-                GROUP BY DATE(fecha_creacion)
-                ORDER BY fecha DESC
-            `;
-            
-            prioridadQuery = await sql`
-                SELECT p.nombre, COUNT(t.id)::int as total
-                FROM ticket_prioridades p
-                LEFT JOIN tickets t ON t.prioridad_id = p.id AND t.usuario_id = ${userId}
-                GROUP BY p.id, p.nombre
-                ORDER BY p.id
-            `;
-        }
-        
-        // Mapeo seguro en caso de nulos (las fechas de Postgres a veces vienen raras, usamos toString o substring si es necesario)
         const ticketsPorDia = diaQuery.map(item => ({
             fecha: item.fecha instanceof Date ? item.fecha.toISOString().split('T')[0] : item.fecha,
             total: item.total || 0
@@ -187,8 +84,8 @@ exports.getDashboardStats = async (req, res) => {
             data: {
                 ticketsPorDia,
                 prioridadesStats,
-                commentsPorDia: [], // Preparado para el futuro
-                topTicketsComentados: [] // Preparado para el futuro
+                commentsPorDia: [], 
+                topTicketsComentados: [] 
             }
         });
         

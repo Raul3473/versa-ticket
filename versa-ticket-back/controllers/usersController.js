@@ -91,9 +91,10 @@ exports.getUserById = async (req, res) => {
 // ==========================================
 exports.createUser = async (req, res) => {
   try {
-    const { nombre, apellido, email, password, rol_id, area_id } = req.body;
+    let { nombre, apellido, email, password, rol_id, area_id } = req.body;
+    const values = [nombre, apellido, email, rol_id];
     const userRole = req.user?.rol_id;
-    
+    area_id = area_id === "" ? null : area_id;
     // Solo administradores pueden crear usuarios
     if (userRole !== 2) {
       return res.status(403).json({ message: "No tienes permiso para crear usuarios" });
