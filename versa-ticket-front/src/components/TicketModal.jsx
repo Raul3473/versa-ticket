@@ -99,7 +99,6 @@ export default function TicketModal({ onClose, onTicketCreated, currentUser }) {
     setLoading(true);
 
     try {
-      // ✅ Usar api en lugar de fetch
       const response = await api.post('/tickets', {
         titulo: formData.titulo,
         descripcion: formData.descripcion,
