@@ -377,23 +377,25 @@ exports.closeTicketSign = async (req, res) => {
         `;
 
         // Notificación por correo
-        try {
-            const userResult = await sql`
-                SELECT nombre, email
-                FROM users
-                WHERE id = ${result[0].usuario_id}
-            `;
+       try {
+    const userResult = await sql`
+        SELECT nombre, email
+        FROM users
+        WHERE id = ${result[0].usuario_id}
+    `;
 
-            if (userResult.length > 0) {
-                await enviarCorreoTicketCerrado(
-                    userResult[0],
-                    result[0],
-                    transporter
-                );
-            }
-        } catch (error) {
-            console.error("❌ Error enviando correo de cierre:", error);
-        }
+    if (userResult.length > 0) {
+        enviarCorreoTicketCerrado(
+            userResult[0],
+            result[0],
+            transporter
+        ).catch(error => {
+            console.error("❌ Error enviando correo:", error);
+        });
+    }
+} catch (error) {
+    console.error("❌ Error preparando correo:", error);
+}
 
         res.json({
             message: "Ticket cerrado y firmado exitosamente",
