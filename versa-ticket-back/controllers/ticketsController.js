@@ -407,6 +407,25 @@ exports.closeTicketSign = async (req, res) => {
             RETURNING *
         `;
 
+        // Enviar notificación por correo
+        try {
+            const userResult = await sql`
+                SELECT nombre, email
+                FROM users
+                WHERE id = ${result[0].usuario_id}
+            `;
+
+            if (userResult.length > 0) {
+                await enviarCorreoTicketCerrado(
+                    userResult[0],
+                    result[0],
+                    transporter
+                );
+            }
+        } catch (emailError) {
+            console.error("❌ Error enviando correo de cierre:", emailError);
+        }
+
         res.json({
             message: "Ticket cerrado y firmado exitosamente",
             ticket: result[0]
