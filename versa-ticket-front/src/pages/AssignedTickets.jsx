@@ -29,7 +29,7 @@ const AssignedTickets = () => {
     try {
       const token = localStorage.getItem('token');
 
-      const response = await fetch('http://localhost:3000/api/tickets/assigned', {
+      const response = await fetch('https://versa-ticket.onrender.com/api/tickets/assigned', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 

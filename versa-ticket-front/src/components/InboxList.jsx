@@ -14,7 +14,7 @@ export default function InboxList({ onSelect, onOpenModal }) {
     try {
       setLoading(true);
       // Usa la URL correcta
-      const response = await fetch('http://localhost:3000/api/tickets');
+      const response = await fetch('https://versa-ticket.onrender.com/api/tickets');
       
       if (!response.ok) {
         throw new Error(`Error ${response.status}: ${response.statusText}`);

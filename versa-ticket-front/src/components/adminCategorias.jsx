@@ -24,7 +24,7 @@ export function AdminCategorias({ user, permisos }) {
     const fetchCategorias = async () => {
         try {
             // Asumiendo que tu endpoint backend será algo como /api/categorias
-            const res = await api.get("http://localhost:3000/api/categorias");
+            const res = await api.get("https://versa-ticket.onrender.com/api/categorias");
             setCategorias(res.data);
         } catch (error) {
             console.error("Error cargando categorías:", error);
@@ -33,7 +33,7 @@ export function AdminCategorias({ user, permisos }) {
 
     const fetchAreas = async () => {
         try {
-            const res = await fetch("http://localhost:3000/api/catalogos/areas");
+            const res = await fetch("https://versa-ticket.onrender.com/api/catalogos/areas");
             const data = await res.json();
             setAreas(data);
         } catch (error) {
@@ -58,7 +58,7 @@ export function AdminCategorias({ user, permisos }) {
         if (!window.confirm(`¿Eliminar la categoría "${categoria.nombre}"?`)) return;
 
         try {
-            await fetch(`http://localhost:3000/api/categorias/${categoria.id}`, {
+            await fetch(`https://versa-ticket.onrender.com/api/categorias/${categoria.id}`, {
                 method: "DELETE",
             });
             setCategorias((prev) => prev.filter(c => c.id !== categoria.id));
@@ -73,8 +73,8 @@ export function AdminCategorias({ user, permisos }) {
 
         try {
             const url = isEdit
-                ? `http://localhost:3000/api/categorias/${selectedCategoria.id}`
-                : `http://localhost:3000/api/categorias`; // Ajusta la ruta de creación si es distinta
+                ? `https://versa-ticket.onrender.com/api/categorias/${selectedCategoria.id}`
+                : `https://versa-ticket.onrender.com/api/categorias`; // Ajusta la ruta de creación si es distinta
             const method = isEdit ? "PUT" : "POST";
 
             await fetch(url, {

@@ -34,7 +34,7 @@ const CreateTicket = () => {
       setCargandoDatos(true);
       
       // Cargar prioridades
-      const resPrioridades = await fetch('http://localhost:3000/api/prioridades', {
+      const resPrioridades = await fetch('https://versa-ticket.onrender.com/api/prioridades', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (resPrioridades.ok) {
@@ -50,7 +50,7 @@ const CreateTicket = () => {
       }
 
       // Cargar categorías
-      const resCategorias = await fetch('http://localhost:3000/api/categorias', {
+      const resCategorias = await fetch('https://versa-ticket.onrender.com/api/categorias', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (resCategorias.ok) {
@@ -66,7 +66,7 @@ const CreateTicket = () => {
       }
 
       // Cargar áreas
-      const resAreas = await fetch('http://localhost:3000/api/areas', {
+      const resAreas = await fetch('https://versa-ticket.onrender.com/api/areas', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (resAreas.ok) {
@@ -94,7 +94,7 @@ const CreateTicket = () => {
   // ✅ Función para cargar agentes
   const cargarAgentes = async () => {
     try {
-      const res = await fetch('http://localhost:3000/api/users?rol=3', {
+      const res = await fetch('https://versa-ticket.onrender.com/api/users?rol=3', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -102,7 +102,7 @@ const CreateTicket = () => {
         setAgentes(Array.isArray(data) ? data : []);
       } else {
         // Si no hay endpoint con filtro, cargar todos y filtrar
-        const resAll = await fetch('http://localhost:3000/api/users', {
+        const resAll = await fetch('https://versa-ticket.onrender.com/api/users', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (resAll.ok) {
@@ -142,7 +142,7 @@ const CreateTicket = () => {
         estado_id: 1 // Pendiente
       };
 
-      const response = await fetch('http://localhost:3000/api/tickets', {
+      const response = await fetch('https://versa-ticket.onrender.com/api/tickets', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
