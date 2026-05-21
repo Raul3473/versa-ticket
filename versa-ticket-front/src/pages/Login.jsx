@@ -56,7 +56,7 @@ const Login = () => {
         {/* Header con Logos */}
         <div className="flex items-center justify-center gap-4 mb-4">
           <img 
-            src="./public/images/logo.png"
+            src="/Logo-Versa.svg" 
             alt="VersaTicket" 
             className="w-14 h-14 object-contain rounded-lg"
           />
@@ -64,7 +64,7 @@ const Login = () => {
             VERSATICKET
           </h1>
           <img 
-            src="./public/images/mascota.png"
+            src="/mascota.svg" 
             alt="Mascot" 
             className="w-14 h-14 object-contain"
           />
