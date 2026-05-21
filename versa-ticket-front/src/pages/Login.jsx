@@ -64,7 +64,7 @@ const Login = () => {
             VERSATICKET
           </h1>
           <img 
-            src="./assets/mascota.jpeg"
+            src="./assets/hero.png"
             alt="Mascot" 
             className="w-14 h-14 object-contain"
           />
