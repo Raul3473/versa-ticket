@@ -302,7 +302,7 @@ exports.updateTicket = async (req, res) => {
             titulo, descripcion, prioridad_id, categoria_id, area_id, responsable_id, estado_id
         } = req.body;
 
-        const ESTADO_CERRADO_ID = 5;
+        const ESTADO_CERRADO_ID = 4;
 
         // 1. Obtener estado actual antes de actualizar
         const ticketAntes = await sql`
@@ -406,25 +406,6 @@ exports.closeTicketSign = async (req, res) => {
             WHERE id = ${id}
             RETURNING *
         `;
-
-        // Enviar notificación por correo
-        try {
-            const userResult = await sql`
-                SELECT nombre, email
-                FROM users
-                WHERE id = ${result[0].usuario_id}
-            `;
-
-            if (userResult.length > 0) {
-                await enviarCorreoTicketCerrado(
-                    userResult[0],
-                    result[0],
-                    transporter
-                );
-            }
-        } catch (emailError) {
-            console.error("❌ Error enviando correo de cierre:", emailError);
-        }
 
         res.json({
             message: "Ticket cerrado y firmado exitosamente",
