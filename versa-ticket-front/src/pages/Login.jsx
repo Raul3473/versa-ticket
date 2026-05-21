@@ -24,7 +24,7 @@ const Login = () => {
         // Obtenemos los datos normalizados (user o usuario)
         const userData = data.user || data.usuario;
         
-        console.log('🚀 Redireccionando usuario:', userData.nombre);
+        console.log('Redireccionando usuario:', userData.nombre);
         
         // Redirección inteligente por Rol (Lógica del compañero)
         if (userData.rol_id === 2) {
@@ -56,7 +56,7 @@ const Login = () => {
         {/* Header con Logos */}
         <div className="flex items-center justify-center gap-4 mb-4">
           <img 
-            src="/Logo-Versa.jpeg" 
+            src="./assets/Logo-Versa.jpeg"
             alt="VersaTicket" 
             className="w-14 h-14 object-contain rounded-lg"
           />
@@ -64,7 +64,7 @@ const Login = () => {
             VERSATICKET
           </h1>
           <img 
-            src="/mascota.jpeg" 
+            src="./assets/mascota.jpeg"
             alt="Mascot" 
             className="w-14 h-14 object-contain"
           />
