@@ -293,7 +293,7 @@ exports.createTicket = async (req, res) => {
 };
 
 // ==========================================
-// 5. ACTUALIZAR TICKET (Con notificaciones)
+// 5. ACTUALIZAR TICKET 
 // ==========================================
 exports.updateTicket = async (req, res) => {
     try {
@@ -302,22 +302,6 @@ exports.updateTicket = async (req, res) => {
             titulo, descripcion, prioridad_id, categoria_id, area_id, responsable_id, estado_id
         } = req.body;
 
-        const ESTADO_CERRADO_ID = 4;
-
-        // 1. Obtener estado actual antes de actualizar
-        const ticketAntes = await sql`
-            SELECT estado_id, usuario_id
-            FROM tickets
-            WHERE id = ${id}
-        `;
-
-        if (ticketAntes.length === 0) {
-            return res.status(404).json({ message: "Ticket no encontrado" });
-        }
-
-        const estadoAnterior = ticketAntes[0].estado_id;
-
-        // 2. Actualizar ticket
         const result = await sql`
             UPDATE tickets 
             SET titulo = COALESCE(${titulo || null}, titulo),
@@ -331,26 +315,11 @@ exports.updateTicket = async (req, res) => {
             RETURNING *
         `;
 
-        const ticketActualizado = result[0];
-
-        // 3. Validar cambio REAL a cerrado para notificar
-        const cambioACerrado =
-            Number(estadoAnterior) !== ESTADO_CERRADO_ID &&
-            Number(ticketActualizado.estado_id) === ESTADO_CERRADO_ID;
-
-        if (cambioACerrado) {
-            try {
-                const userResult = await sql`SELECT nombre, email FROM users WHERE id = ${ticketActualizado.usuario_id}`;
-                if (userResult.length > 0) {
-                    const usuario = userResult[0];
-                    await enviarCorreoTicketCerrado(usuario, ticketActualizado, transporter);
-                }
-            } catch (error) {
-                console.error("❌ Error enviando email de cierre:", error);
-            }
+        if (result.length === 0) {
+            return res.status(404).json({ message: "Ticket no encontrado" });
         }
 
-        res.json(ticketActualizado);
+        res.json(result[0]);
 
     } catch (error) {
         console.error("❌ Error actualizando ticket:", error);
@@ -378,7 +347,7 @@ exports.deleteTicket = async (req, res) => {
 };
 
 // ==========================================
-// 7. Firmar ticket (Evidencias y Firmas)
+// 7. Firmar ticket (Evidencias , Firmas y Notificaciones)
 // ==========================================
 exports.closeTicketSign = async (req, res) => {
     try {
@@ -406,6 +375,25 @@ exports.closeTicketSign = async (req, res) => {
             WHERE id = ${id}
             RETURNING *
         `;
+
+        // Notificación por correo
+        try {
+            const userResult = await sql`
+                SELECT nombre, email
+                FROM users
+                WHERE id = ${result[0].usuario_id}
+            `;
+
+            if (userResult.length > 0) {
+                await enviarCorreoTicketCerrado(
+                    userResult[0],
+                    result[0],
+                    transporter
+                );
+            }
+        } catch (error) {
+            console.error("❌ Error enviando correo de cierre:", error);
+        }
 
         res.json({
             message: "Ticket cerrado y firmado exitosamente",
