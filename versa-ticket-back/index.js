@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
+const transporter = require("./config/mailer");
 require("dotenv").config();
 
 // ==========================================
